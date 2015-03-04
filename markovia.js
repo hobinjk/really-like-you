@@ -52,30 +52,48 @@ function linkKey(source, target) {
   return source + ' -> ' + target;
 }
 
+function addLink(source, target) {
+  var key = linkKey(source, target);
+  if (links[key]) {
+    links[key].value += 1;
+  } else {
+    links[key] = {
+      source: source,
+      target: target,
+      value: 1,
+      bending: false
+    };
+  }
+
+  var oppositeKey = linkKey(target, source);
+  if (links[oppositeKey]) {
+    links[key].bending = true;
+    links[oppositeKey].bending = true;
+  }
+}
+
 lyrics.split('\n').forEach(function(line) {
   var lastWord = null;
-  line.split(' ').forEach(function(word) {
-    word = word.toLowerCase().replace(/[^a-z]/g, '');
+  line.split(' ').forEach(function(rawWord) {
+    var word = rawWord.toLowerCase().replace(/[^a-z']/g, '');
     if (wordsSet[word]) {
       wordsSet[word].count += 1;
     } else {
+      var nameWord = word;
+      var potentialIMatch = nameWord.match(/^i('.+)?$/);
+      if (potentialIMatch && (potentialIMatch[0].length === nameWord.length)) {
+        nameWord = rawWord.replace(/[^A-Za-z']/g, '');
+      }
+
       wordsSet[word] = {
         name: word,
+        displayName: nameWord,
         count: 1
       };
     }
 
     if (lastWord) {
-      var key = linkKey(lastWord, word);
-      if (links[key]) {
-        links[key].value += 1;
-      } else {
-        links[key] = {
-          source: lastWord,
-          target: word,
-          value: 1
-        };
-      }
+      addLink(lastWord, word);
     }
 
     lastWord = word;
@@ -97,11 +115,9 @@ wordNodes.forEach(function(word, index) {
 });
 
 var wordLinks = values(links).map(function(link) {
-  return {
-    source: wordIndices[link.source],
-    target: wordIndices[link.target],
-    value: link.value
-  };
+  link.source = wordIndices[link.source];
+  link.target = wordIndices[link.target];
+  return link;
 });
 
 var width = window.innerWidth * 2;
@@ -109,7 +125,7 @@ var height = window.innerHeight * 2;
 var padding = 0;
 
 var force = d3.layout.force()
-    .charge(-2500)
+    .charge(-2000)
     .linkDistance(100)
     .size([width, height]);
 
@@ -137,11 +153,12 @@ force.nodes(wordNodes)
 
 var diagonal = d3.svg.diagonal();
 
-var link = svg.selectAll('.link')
-    .data(wordLinks)
-  .enter().append('line')
+var arrowPath = svg.append('g').selectAll('path')
+    .data(force.links())
+  .enter().append('path')
     .attr('class', 'link')
-    .attr('stroke-width', function(d) { return Math.sqrt(d.value); });
+    .attr('marker-end', 'url(#arrow-head)')
+    .attr('stroke-width', function(d) { return 1 + 0.5 * Math.sqrt(d.value); });
 
 var node = svg.selectAll('.node')
     .data(wordNodes)
@@ -159,21 +176,10 @@ node.append('circle')
 node.append('text')
     .attr('dy', '.31em')
     .attr('text-anchor', 'middle')
-    .text(function(d) {return d.name; });
-
-var arrowPath = svg.append('g').selectAll('path')
-    .data(force.links())
-  .enter().append('path')
-    .attr('class', 'link')
-    .attr('marker-end', 'url(#arrow-head)');
+    .text(function(d) {return d.displayName; });
 
 force.on('tick', function() {
   arrowPath.attr('d', linkArc);
-
-  // link.attr('x1', function(d) { return d.source.x; })
-  //     .attr('y1', function(d) { return d.source.y; })
-  //     .attr('x2', function(d) { return d.target.x; })
-  //     .attr('y2', function(d) { return d.target.y; });
 
   node.attr('transform', function(d) {
     return 'translate(' + d.x + ',' + d.y + ')';
@@ -183,6 +189,11 @@ force.on('tick', function() {
 function linkArc(link) {
   var target = wordNodes[link.target.index];
   var source = wordNodes[link.source.index];
+
+  if (link.source.name === link.target.name) {
+    return drawSelfArc(target);
+  }
+
   var targetRadius = circleRadius(target);
   var sourceRadius = circleRadius(source);
 
@@ -195,12 +206,40 @@ function linkArc(link) {
 
   var tx = target.x - Math.cos(gamma) * targetRadius;
   var ty = target.y - Math.sin(gamma) * targetRadius;
+
   var sx = source.x + Math.cos(gamma) * sourceRadius;
   var sy = source.y + Math.sin(gamma) * sourceRadius;
 
-  console.log(gamma);
-  var bendingDirection = (dy / dx > 0) ? 1 : 0;
+  if (link.bending) {
+    var bendingDirection = bendingDirection = (dy / dx > 0) ? 1 : 0;
+    return 'M' + sx + ',' + sy + 'A' + dr + ',' + dr + ' 0 0,' +
+           bendingDirection + ' ' + tx + ',' + ty;
+  } else {
+    return 'M' + sx + ',' + sy + 'L' + tx + ',' + ty;
+  }
+}
 
-  return 'M' + sx + ',' + sy + 'A' + dr + ',' + dr + ' 0 0,' +
-         bendingDirection + ' ' + tx + ',' + ty;
+function drawSelfArc(circle) {
+  var x = circle.x;
+  var y = circle.y;
+  var r = circleRadius(circle);
+  var upperAngle = -Math.PI / 3;
+  var lowerAngle = upperAngle + Math.PI / 3;
+
+  // Always draw self-loops in the top-right corner
+  var sx = x + r * Math.cos(upperAngle);
+  var sy = y + r * Math.sin(upperAngle);
+
+  var tx = x + r * Math.cos(lowerAngle);
+  var ty = y + r * Math.sin(lowerAngle);
+
+  // Self-loops need a small section of line to point the arrowhead properly.
+  // This constant is entirely empirical.
+  var txInner = tx + Math.cos(2.7 * Math.PI / 3);
+  var tyInner = ty + Math.sin(2.7 * Math.PI / 3);
+
+  var dr = r / 1.5;
+
+  return 'M' + sx + ',' + sy + 'A' + dr + ',' + dr + ' 0 1,1 ' + tx + ',' + ty +
+         'L' + tx + ',' + ty + ' ' + txInner + ',' + tyInner;
 }
