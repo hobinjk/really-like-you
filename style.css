@@ -1,0 +1,30 @@
+#markovia {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.node circle {
+  fill: #fff;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+.node {
+  font: 10px sans-serif;
+}
+
+.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5px;
+  z-index: -5;
+}
+
+#arrow-head {
+  fill: #ccc;
+  stroke: none;
+  z-index: -5;
+}
