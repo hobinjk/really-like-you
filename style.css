@@ -16,15 +16,16 @@
   font: 10px sans-serif;
 }
 
+.node text {
+  pointer-events: none;
+}
+
 .link {
   fill: none;
   stroke: #ccc;
-  stroke-width: 1.5px;
-  z-index: -5;
 }
 
 #arrow-head {
   fill: #ccc;
   stroke: none;
-  z-index: -5;
 }
